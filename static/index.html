@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>WebSocket demo</title>
+</head>
+
+<body>
+    <div id="newUserForm" style="display: none;">
+        <label for='newUserName' style="display: block;">You need to register an user name</label>
+        <input id="newUserName" placeholder="User Name" />
+        <button id="newUserButton">Create New User</button>
+    </div>
+    <div id="newGameForm" style="display:none">
+        <h3>Create New Game</h3>
+        <label for='newGameName' style="display: block;">Name This Game Session</label>
+        <input id="newGameName" placeholder="Game Session Name" />
+        <button id="createNewGameButton">Create New Game Session</button>
+    </div>
+    <div id="activeGamesHolder" style="display: none;">
+        <h3>Active Games</h3>
+        <div id="activeGames"></div>
+    </div>
+
+    <script>
+        const uuidv4 = () => {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        };
+        let deviceId = localStorage.getItem('deviceId');
+        if (!deviceId) {
+            deviceId = uuidv4();
+            localStorage.setItem('deviceId', deviceId);
+        }
+        let userName = localStorage.getItem('userName');
+        let currentConnection = localStorage.getItem('currentConnection');
+
+        let ws = new WebSocket("ws://192.168.254.70:5678/");
+        console.log(ws);
+        let connectionId = null;
+
+        ws.onmessage = (event) => {
+            let message = JSON.parse(event.data);
+            console.log(message);
+            switch (message.action) {
+                case 'newConnectionAccepted':
+                    handleNewConnection(message.payload)
+                    break
+                case 'readyToStart':
+                    handleReadyToStart()
+                    break
+                case 'needUserName':
+                    handleNeedUserName()
+                    break
+                case 'sentGamesList':
+                    handleGamesRecieved(message.payload)
+                    break
+                case 'gameJoined':
+                    handleGameJoined(message.payload)
+                    break
+                default:
+                    console.log('No Clue')
+            }
+
+        }
+        //message functions
+        const handleNewConnection = (cId) => {
+            connectionId = cId;
+            localStorage.setItem('currentConnection', connectionId);
+            let payload = { 'deviceId': deviceId }
+            if (userName) {
+                payload.userName = userName
+            }
+            ws.send(JSON.stringify({ 'connection': connectionId, 'action': 'sendDeviceId', 'payload': payload }))
+        }
+
+        const handleNeedUserName = () => {
+            if (userName) {
+                document.getElementById('newUserForm').setAttribute('style', 'display:none')
+                ws.send(JSON.stringify({ 'connection': connectionId, action: 'sendUserName', 'deviceId': deviceId, 'payload': { 'userName': userName } }))
+            } else {
+                document.getElementById('newUserForm').setAttribute('style', 'display:block')
+            }
+        }
+
+        const handleReadyToStart = () => {
+            document.getElementById('newGameForm')
+                .setAttribute('style', 'display:block')
+        }
+
+        const handleGamesRecieved = games => {
+            console.log(games);
+            document.getElementById('activeGamesHolder').setAttribute('style', 'display:block');
+            document.getElementById('activeGames').innerHTML = games.map(game=>{
+                return `
+                <div style='padding:10px;background:#999;cursor:pointer;'> 
+                    <span style="padding:4px; font-weight:bold;">${game.name}</span> - status : <span class="${game.status}">${game.status}</span>
+                </div>
+                `;
+            }).join('')
+        }
+
+        const handleGameJoined = data => {
+            document.getElementById('newGameForm').setAttribute('style', 'display:none')
+            document.getElementById('activeGamesHolder').setAttribute('style','display:none')
+            console.log(data);
+        }
+
+        //non handling functions
+        const createNewGame = () => {
+            let name =  document.getElementById('newGameName').value;
+            ws.send(JSON.stringify({
+                'action': 'createNewGame', 'connection': connectionId, 'deviceId': deviceId, payload: {'name':name}
+            }))
+        }
+
+
+        document.getElementById('createNewGameButton')
+            .addEventListener('click', createNewGame);
+
+        document.getElementById('newUserButton')
+            .addEventListener('click', handleNeedUserName)
+
+        document.getElementById('newUserName')
+            .addEventListener('input', () => {
+                userName = document.getElementById('newUserName').value;
+                console.log(userName);
+                localStorage.setItem('userName', userName)
+            })
+
+        //set defaults .. kinda crappy
+        document.getElementById('newUserName').setAttribute('value', userName || "")
+    </script>
+</body>
+
+</html>
